@@ -11,6 +11,7 @@
   "dependencies": {
     "@oceanprotocol/contracts": "^0.6.5",
     "@oceanprotocol/lib": "^0.17.3",
+    "dotenv": "^10.0.0",
     "web3": "^1.5.2"
   }
 }

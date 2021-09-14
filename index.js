@@ -1,62 +1,87 @@
 const Web3 = require("web3");
 const { Ocean, DataTokens, Account } = require("@oceanprotocol/lib");
-
 const { factoryABI } = require("@oceanprotocol/contracts/artifacts/DTFactory.json");
 const { datatokensABI } = require("@oceanprotocol/contracts/artifacts/DataTokenTemplate.json");
 const { config, contracts, urls } = require("./config");
+const tokenDefinition = require('./tokens.json');
+const { open } = require('fs/promises');
+const path = require('path');
 
+require('dotenv').config();
+
+const NETWORK_NAME = 'rinkeby'
+
+const saveDeployedTokenAddresses = async (tokenAddresses) => {
+  let text = ``
+  tokenAddresses.forEach(ta => {
+    text += `${ta.ticker} \t ${ta.address}\n`
+  })
+  let filename = `${NETWORK_NAME}-token-addresses`;
+  let fh = await open(filename, 'w');
+  await fh.writeFile(String(text))
+  await fh.close();
+}
 
 const init = async () => {
   const ocean = await Ocean.getInstance(config);
-  //const blob = `http://localhost:8030/api/v1/services/consume`;
   const blob = `${config.providerUri}/api/v1/services/consume`;
 
-  /*
-  const accounts = await ocean.accounts.list();
-  const alice = accounts[0].id;
-  console.log('Alice account address:', alice)
-  */
-
   const web3 = new Web3(urls.networkUrl)
-  const debioDeployerPrivateKey = '1dbe12c7595d7577f92d7002a8d564b8d1aef33a0ebc26ef5a3dd828fd9ae2ae'
+  const debioDeployerPrivateKey = process.env.DEPLOYER_PRIVATE_KEY
   const account = web3.eth.accounts.privateKeyToAccount('0x' + debioDeployerPrivateKey)
 
   web3.eth.accounts.wallet.add(account)
   web3.eth.defaultAccount = account.address
 
-  const datatoken = new DataTokens(
-    contracts.DTFactory,
-    factoryABI,
-    datatokensABI,
-    web3
-  );
-  const tokenAddress = await datatoken.create(
-    blob,
-    account.address,
-    null,
-    'GeneToken', // name
-    'GENE', // symbol
-  );
-  console.log(`Deployed datatoken address: ${tokenAddress}`);
+  const tokenAddresses = []
+  let nonce = 0
+  for (let token of tokenDefinition) {
+    nonce = await web3.eth.getTransactionCount(account.address);
+    console.log('nonce', nonce)
 
-  console.log(`Minting token`)
-  await datatoken.mint(
-    tokenAddress,
-    account.address,
-    '100', // amount
-    account.address // toAddress
-  )
-  console.log('Token minted')
+    const datatoken = new DataTokens(
+      contracts.DTFactory,
+      factoryABI,
+      datatokensABI,
+      web3
+    );
+    const tokenAddress = await datatoken.create(
+      blob,
+      account.address,
+      null,
+      token.name, // name
+      token.ticker, // symbol
+    );
 
-  let tokenBalance = await datatoken.balance(tokenAddress, account.address)
-  console.log('Account token balance:', tokenBalance)
+    console.log(`Deployed datatoken address: ${tokenAddress}`);
 
-  let tokenName = await datatoken.getName(tokenAddress)
-  console.log('tokenName:', tokenName)
+    console.log(`Minting token`)
+    await datatoken.mint(
+      tokenAddress,
+      account.address,
+      '100', // amount
+      account.address // toAddress
+    )
+    console.log('Token minted')
 
-  let tokenSymbol = await datatoken.getSymbol(tokenAddress)
-  console.log('tokenSymbol', tokenSymbol)
+    let tokenBalance = await datatoken.balance(tokenAddress, account.address)
+    console.log('Account token balance:', tokenBalance)
 
+    let tokenName = await datatoken.getName(tokenAddress)
+    console.log('tokenName:', tokenName)
+
+    let tokenSymbol = await datatoken.getSymbol(tokenAddress)
+    console.log('tokenSymbol', tokenSymbol)
+
+    tokenAddresses.push({ ticker: tokenSymbol, address: tokenAddress })
+  }
+
+  await saveDeployedTokenAddresses(tokenAddresses)
+
+  /**
+   * Publish Dataset
+   * */
+  /*
   const testData = {
     main: {
       type: "dataset",
@@ -97,6 +122,7 @@ const init = async () => {
   } catch (err) {
     console.log(err)
   }
+  */
 }
 
 init();
